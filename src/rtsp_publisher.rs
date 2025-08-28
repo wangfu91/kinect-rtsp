@@ -42,6 +42,95 @@ fn check_gst_element(name: &str) -> Result<()> {
     }
 }
 
+/// Helper to create and configure a factory for a stream (color or infrared).
+fn create_factory(
+    video_caps: &str,
+    audio_caps: &str,
+    video_bitrate: u32,
+    audio_bitrate: u32,
+    src_name: &str,
+    audio_src_name: &str,
+    max_video_bytes: u64,
+    client_count: Arc<AtomicUsize>,
+    video_src: Arc<Mutex<Option<gst_app::AppSrc>>>,
+    audio_src: Arc<Mutex<Option<gst_app::AppSrc>>>,
+) -> rtsp::RTSPMediaFactory {
+    let factory = rtsp::RTSPMediaFactory::new();
+
+    let video_pipeline = format!(
+        "( appsrc name={src_name} is-live=true format=time do-timestamp=true \
+        caps={video_caps} \
+        ! queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 \
+        ! videoconvert ! video/x-raw,format=I420 \
+        ! queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 \
+        ! openh264enc bitrate={video_bitrate} gop-size=30 complexity=low \
+        ! h264parse config-interval=1 \
+        ! rtph264pay name=pay0 pt=96 )"
+    );
+
+    let audio_pipeline = format!(
+        "( appsrc name={audio_src_name} is-live=true format=time do-timestamp=true \
+        caps={audio_caps} \
+        ! queue leaky=downstream max-size-buffers=4 max-size-bytes=0 max-size-time=0 \
+        ! audioconvert ! audioresample \
+        ! avenc_aac bitrate={audio_bitrate} \
+        ! rtpmp4apay name=pay1 pt=97 )"
+    );
+
+    let full_pipeline = format!("{video_pipeline}{audio_pipeline}");
+    factory.set_launch(&full_pipeline);
+    factory.set_shared(true);
+
+    let video_src_clone = video_src.clone();
+    let audio_src_clone = audio_src.clone();
+    let count = client_count.clone();
+    let src_name = src_name.to_string();
+    let audio_src_name = audio_src_name.to_string();
+
+    factory.connect_media_configure(move |_, media| {
+        let active = count.fetch_add(1, Ordering::SeqCst) + 1;
+        log::info!("🎥 /{src_name} session started, count = {active}");
+
+        let count_inner = count.clone();
+        let video_src_unprep = video_src_clone.clone();
+        let audio_src_unprep = audio_src_clone.clone();
+        let src_name_clone = src_name.clone();
+
+        media.connect_unprepared(move |_| {
+            let active = count_inner.fetch_sub(1, Ordering::SeqCst) - 1;
+            log::info!("🎥 /{src_name_clone} session ended, count = {active}");
+            *video_src_unprep.lock().unwrap() = None;
+            *audio_src_unprep.lock().unwrap() = None;
+        });
+
+        let elem = media.element();
+        if let Ok(bin) = elem.downcast::<gst::Bin>() {
+            if let Some(src_elem) = bin.by_name(&src_name)
+                && let Ok(appsrc) = src_elem.downcast::<gst_app::AppSrc>()
+            {
+                appsrc.set_format(gst::Format::Time);
+                appsrc.set_block(true);
+                appsrc.set_max_bytes(max_video_bytes);
+                *video_src_clone.lock().unwrap() = Some(appsrc);
+                log::info!(
+                    "{src_name} appsrc configured (block=true, max-bytes={max_video_bytes})"
+                );
+            }
+            if let Some(audio_src_elem) = bin.by_name(&audio_src_name)
+                && let Ok(appsrc) = audio_src_elem.downcast::<gst_app::AppSrc>()
+            {
+                appsrc.set_format(gst::Format::Time);
+                appsrc.set_block(true);
+                appsrc.set_max_bytes(512 * 1024);
+                *audio_src_clone.lock().unwrap() = Some(appsrc);
+                log::info!("{audio_src_name} appsrc configured (block=true, max-bytes=512KB)");
+            }
+        }
+    });
+
+    factory
+}
+
 impl RtspPublisher {
     /// Returns true if color capture should be active (i.e., at least one client is connected to /color)
     pub fn is_color_active(&self) -> bool {
@@ -109,149 +198,34 @@ impl RtspPublisher {
         let infra_src: Arc<Mutex<Option<gst_app::AppSrc>>> = Arc::new(Mutex::new(None));
         let infra_audio_src: Arc<Mutex<Option<gst_app::AppSrc>>> = Arc::new(Mutex::new(None));
 
-        // Color + Audio factory
-        let color_factory = rtsp::RTSPMediaFactory::new();
-
-        let video_pipeline = "( appsrc name=colorsrc is-live=true format=time do-timestamp=true \
-                caps=video/x-raw,format=BGRA,width=1920,height=1080,framerate=30/1 \
-                    ! queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 \
-                    ! videoconvert ! video/x-raw,format=I420 \
-                    ! queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 \
-                    ! openh264enc bitrate=2500000 gop-size=30 complexity=low \
-                    ! h264parse config-interval=1 \
-                    ! rtph264pay name=pay0 pt=96 )";
-
-        let audio_pipeline = "( appsrc name=audiosrc is-live=true format=time do-timestamp=true \
-                caps=audio/x-raw,format=S16LE,layout=interleaved,rate=16000,channels=1 \
-                  ! queue leaky=downstream max-size-buffers=4 max-size-bytes=0 max-size-time=0 \
-                  ! audioconvert ! audioresample \
-                  ! avenc_aac bitrate=128000 \
-                  ! rtpmp4apay name=pay1 pt=97 )";
-
-        let full_pipeline = format!("{video_pipeline}{audio_pipeline}");
-        color_factory.set_launch(&full_pipeline);
-        color_factory.set_shared(true);
-
-        // Configure color factory media
-        {
-            let color_src_clone = color_src.clone();
-            let audio_src_clone = color_audio_src.clone();
-            let color_count = color_client_count.clone();
-            color_factory.connect_media_configure(move |_, media| {
-                // A new /color session is starting
-                let active = color_count.fetch_add(1, Ordering::SeqCst) + 1;
-                log::info!("🎥 /color session started, count = {active}");
-
-                // When that session unprepares (client TEARDOWN or disconnect),
-                // we bump the counter back down and clear src handles
-                let color_count_inner = color_count.clone();
-                let color_src_for_unprepare = color_src_clone.clone();
-                let audio_src_for_unprepare = audio_src_clone.clone();
-                media.connect_unprepared(move |_| {
-                    let active = color_count_inner.fetch_sub(1, Ordering::SeqCst) - 1;
-                    log::info!("🎥 /color session ended, count = {active}");
-                    *color_src_for_unprepare.lock().unwrap() = None;
-                    *audio_src_for_unprepare.lock().unwrap() = None;
-                });
-
-                let elem = media.element();
-                if let Ok(bin) = elem.downcast::<gst::Bin>() {
-                    if let Some(colorsrc_elem) = bin.by_name("colorsrc")
-                        && let Ok(appsrc) = colorsrc_elem.downcast::<gst_app::AppSrc>()
-                    {
-                        appsrc.set_format(gst::Format::Time);
-                        // Backpressure so we don't accumulate frames
-                        appsrc.set_block(true);
-                        // One 1080p BGRA frame is ~8.29MB; give headroom for 1-2 frames
-                        appsrc.set_max_bytes(16 * 1024 * 1024);
-                        *color_src_clone.lock().unwrap() = Some(appsrc);
-                        log::info!("Color appsrc configured (block=true, max-bytes=16MB)");
-                    }
-                    if let Some(audiosrc_elem) = bin.by_name("audiosrc")
-                        && let Ok(appsrc) = audiosrc_elem.downcast::<gst_app::AppSrc>()
-                    {
-                        appsrc.set_format(gst::Format::Time);
-                        appsrc.set_block(true);
-                        appsrc.set_max_bytes(512 * 1024); // 512KB buffer for audio
-                        *audio_src_clone.lock().unwrap() = Some(appsrc);
-                        log::info!("Audio appsrc configured (block=true, max-bytes=512KB)");
-                    }
-                }
-            });
-        }
-
+        // Color factory
+        let color_factory = create_factory(
+            "video/x-raw,format=BGRA,width=1920,height=1080,framerate=30/1",
+            "audio/x-raw,format=S16LE,layout=interleaved,rate=16000,channels=1",
+            2500000,
+            128000,
+            "colorsrc",
+            "audiosrc",
+            16 * 1024 * 1024,
+            color_client_count.clone(),
+            color_src.clone(),
+            color_audio_src.clone(),
+        );
         mounts.add_factory("/color", color_factory);
 
         // Infrared factory
-        let infra_factory = rtsp::RTSPMediaFactory::new();
-        let infra_video_pipeline = "( appsrc name=infrasrc is-live=true format=time do-timestamp=true \
-                caps=video/x-raw,format=BGRA,width=512,height=424,framerate=30/1 \
-                    ! queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 \
-                    ! videoconvert ! video/x-raw,format=I420 \
-                    ! queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 \
-                    ! openh264enc bitrate=1500000 gop-size=15 complexity=low \
-                    ! h264parse config-interval=1 \
-                    ! rtph264pay name=pay0 pt=96 )";
-
-        let infra_audio_pipeline = "( appsrc name=infraaudiosrc is-live=true format=time do-timestamp=true \
-                caps=audio/x-raw,format=S16LE,layout=interleaved,rate=16000,channels=1 \
-                  ! queue leaky=downstream max-size-buffers=4 max-size-bytes=0 max-size-time=0 \
-                  ! audioconvert ! audioresample \
-                  ! avenc_aac bitrate=128000 \
-                  ! rtpmp4apay name=pay1 pt=97 )";
-
-        let full_infra_pipeline = format!("{infra_video_pipeline}{infra_audio_pipeline}");
-        infra_factory.set_launch(&full_infra_pipeline);
-        infra_factory.set_shared(true);
-
-        // Configure infrared factory media
-        {
-            let infra_src_clone = infra_src.clone();
-            let infra_audio_src_clone = infra_audio_src.clone();
-            let infra_count = infra_client_count.clone();
-            infra_factory.connect_media_configure(move |_, media| {
-                // A new /infrared session is starting
-                let active = infra_count.fetch_add(1, Ordering::SeqCst) + 1;
-                log::info!("🌙 /infrared session started, count = {active}");
-
-                // When that session unprepares (client TEARDOWN or disconnect),
-                // we bump the counter back down and clear src handles
-                let infra_count_inner = infra_count.clone();
-                let infra_src_for_unprepare = infra_src_clone.clone();
-                let infra_audio_src_for_unprepare = infra_audio_src_clone.clone();
-                media.connect_unprepared(move |_| {
-                    let active = infra_count_inner.fetch_sub(1, Ordering::SeqCst) - 1;
-                    log::info!("🌙 /infrared session ended, count = {active}");
-                    *infra_src_for_unprepare.lock().unwrap() = None;
-                    *infra_audio_src_for_unprepare.lock().unwrap() = None;
-                });
-
-                let elem = media.element();
-                if let Ok(bin) = elem.downcast::<gst::Bin>() {
-                    if let Some(infrasrc_elem) = bin.by_name("infrasrc")
-                        && let Ok(appsrc) = infrasrc_elem.downcast::<gst_app::AppSrc>()
-                    {
-                        appsrc.set_format(gst::Format::Time);
-                        appsrc.set_block(true);
-                        appsrc.set_max_bytes(4 * 1024 * 1024);
-                        *infra_src_clone.lock().unwrap() = Some(appsrc);
-                        log::info!("Infrared appsrc configured (block=true, max-bytes=4MB)");
-                    }
-                    if let Some(audiosrc_elem) = bin.by_name("infraaudiosrc")
-                        && let Ok(appsrc) = audiosrc_elem.downcast::<gst_app::AppSrc>()
-                    {
-                        appsrc.set_format(gst::Format::Time);
-                        appsrc.set_block(true);
-                        appsrc.set_max_bytes(512 * 1024);
-                        *infra_audio_src_clone.lock().unwrap() = Some(appsrc);
-                        log::info!(
-                            "Infrared audio appsrc configured (block=true, max-bytes=512KB)"
-                        );
-                    }
-                }
-            });
-        }
-
+        let infra_factory = create_factory(
+            "video/x-raw,format=BGRA,width=512,height=424,framerate=30/1",
+            "audio/x-raw,format=S16LE,layout=interleaved,rate=16000,channels=1",
+            1500000,
+            128000,
+            "infrasrc",
+            "infraaudiosrc",
+            4 * 1024 * 1024,
+            infra_client_count.clone(),
+            infra_src.clone(),
+            infra_audio_src.clone(),
+        );
         mounts.add_factory("/infrared", infra_factory);
 
         // Attach server to main context - this is critical!
