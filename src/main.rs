@@ -12,45 +12,6 @@ use crate::audio::spawn_audio_pipeline;
 use crate::color::spawn_color_pipeline;
 use crate::infrared::spawn_infra_pipeline;
 use crate::rtsp_publisher::RtspPublisher;
-use serde::Serialize;
-
-#[derive(Serialize)]
-struct RtspAuthHandoff<'a> {
-    username: &'a str,
-    password: &'a str,
-}
-
-fn write_rtsp_auth_handoff(username: Option<&str>, password: Option<&str>) {
-    let path = std::env::temp_dir().join("ai-baby-monitor-rtsp-auth.json");
-    match (username, password) {
-        (Some(u), Some(p)) => {
-            let payload = RtspAuthHandoff {
-                username: u,
-                password: p,
-            };
-            match serde_json::to_vec_pretty(&payload) {
-                Ok(bytes) => {
-                    if let Err(e) = std::fs::write(&path, bytes) {
-                        log::warn!("Failed to write RTSP auth handoff file at {path:?}: {e}");
-                    } else {
-                        log::info!("Wrote RTSP auth handoff to {path:?}");
-                    }
-                }
-                Err(e) => log::warn!("Failed to serialize RTSP auth handoff JSON: {e}"),
-            }
-        }
-        _ => {
-            // Remove stale handoff file if present
-            if let Err(e) = std::fs::remove_file(&path) {
-                if e.kind() != std::io::ErrorKind::NotFound {
-                    log::debug!("Could not remove RTSP auth handoff file {path:?}: {e}");
-                }
-            } else {
-                log::info!("Removed existing RTSP auth handoff file {path:?}");
-            }
-        }
-    }
-}
 
 #[derive(Debug, Parser)]
 #[command(
@@ -74,9 +35,6 @@ async fn main() -> anyhow::Result<()> {
 
     // Parse CLI
     let args = Cli::parse();
-
-    // Persist credentials for the WebRTC bridge (optional)
-    write_rtsp_auth_handoff(args.rtsp_username.as_deref(), args.rtsp_password.as_deref());
 
     start_kinect_capture(args.rtsp_username, args.rtsp_password)?;
 

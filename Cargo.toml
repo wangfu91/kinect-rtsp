@@ -19,8 +19,6 @@ glib = "0.21.1"
 clap = { version = "4.5.46", features = ["derive"] }
 gstreamer-rtsp = { version = "0.24.0", features = ["v1_26"] }
 base64 = "0.22.1"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.143"
 
 [patch.crates-io]
 kinect-v2 = { git = "https://github.com/wangfu91/kinect-v2-rs.git" }
