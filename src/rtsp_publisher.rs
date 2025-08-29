@@ -16,8 +16,8 @@ static AUTH_CREDENTIALS: OnceCell<(String, String)> = OnceCell::new();
 
 /// Simple RTSP Publisher based on GStreamer examples
 /// Exposes two RTSP mount points:
-/// - rtsp://<host>:8554/color     (H.264 video + AAC audio)
-/// - rtsp://<host>:8554/infrared  (H.264 video + AAC audio)
+/// - rtsp://<host>:port/color     (H.264 video + AAC audio)
+/// - rtsp://<host>:port/infrared  (H.264 video + AAC audio)
 pub struct RtspPublisher {
     color_src: Arc<Mutex<Option<gst_app::AppSrc>>>,
     color_audio_src: Arc<Mutex<Option<gst_app::AppSrc>>>,
@@ -147,7 +147,7 @@ impl RtspPublisher {
         self.is_color_active() || self.is_infra_active()
     }
 
-    pub fn start(username: Option<&str>, password: Option<&str>) -> Result<Arc<Self>> {
+    pub fn start(username: Option<&str>, password: Option<&str>, port: u16) -> Result<Arc<Self>> {
         // Initialize GStreamer
         gst::init()?;
 
@@ -187,7 +187,7 @@ impl RtspPublisher {
         let infra_client_count = Arc::new(AtomicUsize::new(0));
 
         // Set the port explicitly
-        server.set_service("8554");
+        server.set_service(&port.to_string());
 
         // Get mount points
         let mounts = server.mount_points().expect("Failed to get mount points");
@@ -235,10 +235,10 @@ impl RtspPublisher {
         server.set_address("0.0.0.0");
         log::info!("RTSP server configured on {:?}", server.address());
 
-        log::info!("RTSP server ready at rtsp://127.0.0.1:8554/color");
-        log::info!("RTSP server ready at rtsp://127.0.0.1:8554/infrared");
-        log::info!("RTSP server ready at rtsp://localhost:8554/color");
-        log::info!("RTSP server ready at rtsp://localhost:8554/infrared");
+        log::info!("RTSP server ready at rtsp://127.0.0.1:{}/color", port);
+        log::info!("RTSP server ready at rtsp://127.0.0.1:{}/infrared", port);
+        log::info!("RTSP server ready at rtsp://localhost:{}/color", port);
+        log::info!("RTSP server ready at rtsp://localhost:{}/infrared", port);
         log::info!("VLC: Open Media > Network Stream > Enter URL > Click Play");
 
         // Start the main loop in a background thread

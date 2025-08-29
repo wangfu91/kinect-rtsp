@@ -19,13 +19,18 @@ use crate::rtsp_publisher::RtspPublisher;
     about = "Kinect RTSP server with optional Basic Auth"
 )]
 struct Cli {
-    /// Username for RTSP Basic Auth
+    /// Optional, username for RTSP Basic Auth
     #[arg(long)]
-    rtsp_username: Option<String>,
+    username: Option<String>,
 
-    /// Password for RTSP Basic Auth
+    /// Optional, password for RTSP Basic Auth
     #[arg(long)]
-    rtsp_password: Option<String>,
+    password: Option<String>,
+
+    /// Optional, port for RTSP server,
+    /// Default to 8554 if not specified
+    #[arg(long, default_value_t = 8554)]
+    port: u16,
 }
 
 #[tokio::main]
@@ -36,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
     // Parse CLI
     let args = Cli::parse();
 
-    start_kinect_capture(args.rtsp_username, args.rtsp_password)?;
+    start_kinect_capture(args.username, args.password, args.port)?;
 
     // Wait for Ctrl-C; when received, abort the server task and await it.
     log::info!("Press Ctrl-C to exit...");
@@ -49,6 +54,7 @@ async fn main() -> anyhow::Result<()> {
 pub fn start_kinect_capture(
     rtsp_username: Option<String>,
     rtsp_password: Option<String>,
+    rtsp_port: u16,
 ) -> anyhow::Result<()> {
     {
         let kinect = Kinect::new().context("Failed to create Kinect instance")?;
@@ -68,9 +74,13 @@ pub fn start_kinect_capture(
 
     log::info!("Starting RTSP server...");
     // Start RTSP server (GStreamer) and publish Kinect streams
-    let rtsp = RtspPublisher::start(rtsp_username.as_deref(), rtsp_password.as_deref())?;
+    let rtsp = RtspPublisher::start(
+        rtsp_username.as_deref(),
+        rtsp_password.as_deref(),
+        rtsp_port,
+    )?;
 
-    log::info!("RTSP server started successfully on port 8554");
+    log::info!("RTSP server started successfully on port {rtsp_port}");
 
     // Start Kinect capture and push raw frames to RTSP appsrcs
     spawn_color_pipeline(rtsp.clone());
@@ -82,11 +92,11 @@ pub fn start_kinect_capture(
     // Log RTSP URLs for easy access
     log::info!("RTSP streams available:");
     if let (Some(u), Some(_)) = (rtsp_username.as_deref(), rtsp_password.as_deref()) {
-        log::info!("  Color:    rtsp://{u}:***@localhost:8554/color");
-        log::info!("  Infrared: rtsp://{u}:***@localhost:8554/infrared");
+        log::info!("  Color:    rtsp://{u}:***@localhost:{rtsp_port}/color");
+        log::info!("  Infrared: rtsp://{u}:***@localhost:{rtsp_port}/infrared");
     } else {
-        log::info!("  Color:    rtsp://localhost:8554/color");
-        log::info!("  Infrared: rtsp://localhost:8554/infrared");
+        log::info!("  Color:    rtsp://localhost:{rtsp_port}/color");
+        log::info!("  Infrared: rtsp://localhost:{rtsp_port}/infrared");
     }
     log::info!("");
     log::info!("To view streams in VLC:");
