@@ -6,8 +6,9 @@ use gstreamer_app as gst_app;
 use gstreamer_rtsp_server as rtsp;
 use gstreamer_rtsp_server::prelude::*;
 use once_cell::sync::OnceCell;
+use parking_lot::Mutex;
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicUsize, Ordering},
 };
 
@@ -25,6 +26,7 @@ pub struct RtspPublisher {
     infra_audio_src: Arc<Mutex<Option<gst_app::AppSrc>>>,
     color_client_count: Arc<AtomicUsize>,
     infra_client_count: Arc<AtomicUsize>,
+    audio_conversion_buf: Arc<Mutex<Vec<i16>>>,
 }
 
 /// Checks if a GStreamer element is available, returning a detailed error if not.
@@ -99,8 +101,8 @@ fn create_factory(
         media.connect_unprepared(move |_| {
             let active = count_inner.fetch_sub(1, Ordering::SeqCst) - 1;
             log::info!("🎥 /{src_name_clone} session ended, count = {active}");
-            *video_src_unprep.lock().unwrap() = None;
-            *audio_src_unprep.lock().unwrap() = None;
+            *video_src_unprep.lock() = None;
+            *audio_src_unprep.lock() = None;
         });
 
         let elem = media.element();
@@ -111,7 +113,7 @@ fn create_factory(
                 appsrc.set_format(gst::Format::Time);
                 appsrc.set_block(true);
                 appsrc.set_max_bytes(max_video_bytes);
-                *video_src_clone.lock().unwrap() = Some(appsrc);
+                *video_src_clone.lock() = Some(appsrc);
                 log::info!(
                     "{src_name} appsrc configured (block=true, max-bytes={max_video_bytes})"
                 );
@@ -122,7 +124,7 @@ fn create_factory(
                 appsrc.set_format(gst::Format::Time);
                 appsrc.set_block(true);
                 appsrc.set_max_bytes(512 * 1024);
-                *audio_src_clone.lock().unwrap() = Some(appsrc);
+                *audio_src_clone.lock() = Some(appsrc);
                 log::info!("{audio_src_name} appsrc configured (block=true, max-bytes=512KB)");
             }
         }
@@ -254,12 +256,13 @@ impl RtspPublisher {
             infra_audio_src,
             color_client_count,
             infra_client_count,
+            audio_conversion_buf: Arc::new(Mutex::new(Vec::with_capacity(2048))),
         }))
     }
 
     pub fn send_color_bgra(&self, _width: u32, _height: u32, data: &[u8]) {
-        if let Some(appsrc) = self.color_src.lock().unwrap().as_ref() {
-            let mut buffer = gst::Buffer::with_size(data.len()).unwrap();
+        if let Some(appsrc) = self.color_src.lock().as_ref() {
+            let mut buffer = gst::Buffer::with_size(data.len()).expect("Failed to alloc GstBuffer");
             if let Ok(mut map) = buffer.get_mut().unwrap().map_writable() {
                 map.copy_from_slice(data);
             }
@@ -274,8 +277,8 @@ impl RtspPublisher {
     }
 
     pub fn send_infra_bgra(&self, _width: u32, _height: u32, data: &[u8]) {
-        if let Some(appsrc) = self.infra_src.lock().unwrap().as_ref() {
-            let mut buffer = gst::Buffer::with_size(data.len()).unwrap();
+        if let Some(appsrc) = self.infra_src.lock().as_ref() {
+            let mut buffer = gst::Buffer::with_size(data.len()).expect("Failed to alloc GstBuffer");
             if let Ok(mut map) = buffer.get_mut().unwrap().map_writable() {
                 map.copy_from_slice(data);
             }
@@ -290,24 +293,25 @@ impl RtspPublisher {
     }
 
     pub fn send_audio_f32(&self, samples_f32: &[f32]) {
-        // Convert f32 to S16LE once
-        let s16_data: Vec<i16> = samples_f32
-            .iter()
-            .map(|&sample| (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
-            .collect();
+        // Reuse buffer to avoid allocation
+        let mut s16_data = self.audio_conversion_buf.lock();
+        s16_data.clear();
+        s16_data.extend(
+            samples_f32
+                .iter()
+                .map(|&sample| (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16),
+        );
 
-        // Convert the i16 samples to bytes without assuming allocation alignment.
-        // Use bytemuck::cast_slice (borrow) and copy into a freshly allocated Gst buffer.
-        let bytes: &[u8] = bytemuck::cast_slice(&s16_data);
+        let bytes: &[u8] = bytemuck::cast_slice(&*s16_data);
 
-        // Allocate a GStreamer buffer and copy the bytes in; this avoids alignment pitfalls.
+        // Allocate a GStreamer buffer and copy, the bytes in; this avoids alignment pitfalls.
         let mut buffer = gst::Buffer::with_size(bytes.len()).expect("Failed to alloc GstBuffer");
         if let Ok(mut map) = buffer.get_mut().unwrap().map_writable() {
             map.copy_from_slice(bytes);
         }
 
         // Push to color audio stream
-        if let Some(appsrc) = self.color_audio_src.lock().unwrap().as_ref()
+        if let Some(appsrc) = self.color_audio_src.lock().as_ref()
             && let Err(e) = appsrc.push_buffer(buffer.clone())
         {
             if e == FlowError::Flushing {
@@ -318,7 +322,7 @@ impl RtspPublisher {
         }
 
         // Push to infrared audio stream
-        if let Some(appsrc) = self.infra_audio_src.lock().unwrap().as_ref()
+        if let Some(appsrc) = self.infra_audio_src.lock().as_ref()
             && let Err(e) = appsrc.push_buffer(buffer)
         {
             if e == FlowError::Flushing {
