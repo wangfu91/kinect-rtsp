@@ -2,15 +2,18 @@ mod audio;
 mod audio_frame_buffer;
 mod color;
 mod infrared;
+mod infrared_config;
 mod rtsp_publisher;
 
 use anyhow::Context;
 use clap::Parser;
 use kinect_v2::Kinect;
+use std::sync::Arc;
 
 use crate::audio::spawn_audio_pipeline;
 use crate::color::spawn_color_pipeline;
 use crate::infrared::spawn_infra_pipeline;
+use crate::infrared_config::InfraredConfigManager;
 use crate::rtsp_publisher::RtspPublisher;
 
 #[derive(Debug, Parser)]
@@ -82,9 +85,20 @@ pub fn start_kinect_capture(
 
     log::info!("RTSP server started successfully on port {rtsp_port}");
 
+    // Initialize infrared config manager
+    log::info!("Initializing infrared configuration manager...");
+    let config_path = "infrared_config.json".to_string();
+    let config_manager = Arc::new(
+        InfraredConfigManager::new(config_path)
+            .context("Failed to initialize infrared config manager")?,
+    );
+
+    // Start config monitor
+    config_manager.clone().spawn_config_monitor();
+
     // Start Kinect capture and push raw frames to RTSP appsrcs
     spawn_color_pipeline(rtsp.clone());
-    spawn_infra_pipeline(rtsp.clone());
+    spawn_infra_pipeline(rtsp.clone(), config_manager);
     spawn_audio_pipeline(rtsp.clone());
 
     log::info!("All pipelines started, waiting for streams to initialize...");

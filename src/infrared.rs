@@ -5,7 +5,6 @@ use anyhow::Context;
 use kinect_v2::infrared_capture::{
     InfraredFrameCapture, InfraredFrameCaptureIter, InfraredFrameData,
 };
-use once_cell::sync::Lazy;
 use ringbuf::{
     HeapRb, SharedRb,
     storage::Heap,
@@ -13,7 +12,33 @@ use ringbuf::{
     wrap::caching::Caching,
 };
 
+use crate::infrared_config::{InfraredConfig, InfraredConfigManager};
 use crate::rtsp_publisher::RtspPublisher;
+
+/// InfraredSourceValueMaximum is the highest value that can be returned in the InfraredFrame.
+/// It is cast to a float for readability in the visualization code.
+const INFRARED_SOURCE_VALUE_MAXIMUM: f32 = u16::MAX as f32; // 65535.0
+
+fn generate_lut(config: &InfraredConfig) -> [u8; 65536] {
+    let mut lut = [0u8; 65536];
+    for (infrared_point, grey_scale_pixel_byte) in lut.iter_mut().enumerate() {
+        // Since we are displaying the image as a normalized grey scale image, we need to convert from
+        // the u16 data (as provided by the InfraredFrame) to a value from [InfraredOutputValueMinimum, InfraredOutputValueMaximum]
+        // Normalize → clamp → byte conversion:
+        let f = (infrared_point as f32 / INFRARED_SOURCE_VALUE_MAXIMUM * config.infrared_source_scale)
+            * (1.0 - config.infrared_output_value_minimum)
+            + config.infrared_output_value_minimum;
+        let clamped = config.infrared_output_value_maximum.min(f);
+        *grey_scale_pixel_byte = (clamped * 255.0).round().clamp(0.0, 255.0) as u8;
+    }
+    lut
+}
+
+fn configs_equal(a: &InfraredConfig, b: &InfraredConfig) -> bool {
+    (a.infrared_output_value_minimum - b.infrared_output_value_minimum).abs() < f32::EPSILON
+        && (a.infrared_output_value_maximum - b.infrared_output_value_maximum).abs() < f32::EPSILON
+        && (a.infrared_source_scale - b.infrared_source_scale).abs() < f32::EPSILON
+}
 
 fn infrared_frame_capture(
     rtsp: Arc<RtspPublisher>,
@@ -90,40 +115,12 @@ fn infrared_frame_capture(
 fn infrared_frame_publish(
     rtsp: Arc<RtspPublisher>,
     raw_rx: &mut Caching<Arc<SharedRb<Heap<InfraredFrameData>>>, false, true>,
+    config_manager: Arc<InfraredConfigManager>,
 ) -> anyhow::Result<()> {
-    /// InfraredSourceValueMaximum is the highest value that can be returned in the InfraredFrame.
-    /// It is cast to a float for readability in the visualization code.
-    const INFRARED_SOURCE_VALUE_MAXIMUM: f32 = u16::MAX as f32; // 65535.0
-
-    /// The InfraredOutputValueMinimum value is used to set the lower limit, post processing, of the
-    /// infrared data that we will render.
-    /// Increasing or decreasing this value sets a brightness "wall" either closer or further away.
-    const INFRARED_OUTPUT_VALUE_MINIMUM: f32 = 0.25;
-
-    /// The InfraredOutputValueMaximum value is the upper limit, post processing, of the
-    /// infrared data that we will render.
-    const INFRARED_OUTPUT_VALUE_MAXIMUM: f32 = 1.0;
-
-    /// The value by which the infrared source data will be scaled.
-    const INFRARED_SOURCE_SCALE: f32 = 3.0;
-
-    // Build a 64 KiB Lookup Table (LUT) once.
-    // • once_cell::sync::Lazy ensures that closure runs exactly once (the first time you reference LUT), in a thread-safe way.
-    // • After that, every pixel becomes just an index into that 64 KiB table, which is orders of magnitude faster than doing the full float pipeline per pixel.
-    static LUT: Lazy<[u8; 65536]> = Lazy::new(|| {
-        let mut lut = [0u8; 65536];
-        for (infrared_point, grey_scale_pixel_byte) in lut.iter_mut().enumerate() {
-            // Since we are displaying the image as a normalized grey scale image, we need to convert from
-            // the u16 data (as provided by the InfraredFrame) to a value from [InfraredOutputValueMinimum, InfraredOutputValueMaximum]
-            // Normalize → clamp → byte conversion:
-            let f = (infrared_point as f32 / INFRARED_SOURCE_VALUE_MAXIMUM * INFRARED_SOURCE_SCALE)
-                * (1.0 - INFRARED_OUTPUT_VALUE_MINIMUM)
-                + INFRARED_OUTPUT_VALUE_MINIMUM;
-            let clamped = INFRARED_OUTPUT_VALUE_MAXIMUM.min(f);
-            *grey_scale_pixel_byte = (clamped * 255.0).round().clamp(0.0, 255.0) as u8;
-        }
-        lut
-    });
+    // For dynamic LUT generation, we'll create a new one whenever config changes
+    let mut current_config = config_manager.get_config();
+    let mut lut = generate_lut(&current_config);
+    let mut last_config_check = std::time::Instant::now();
 
     // pre‐allocate a single RGBA buffer. Kinect is always the same resolution,
     // so after the first frame we never re‐reserve.
@@ -131,6 +128,17 @@ fn infrared_frame_publish(
     let mut first_frame = true;
 
     loop {
+        // Check for config changes every second
+        if last_config_check.elapsed() > Duration::from_secs(1) {
+            let new_config = config_manager.get_config();
+            if !configs_equal(&current_config, &new_config) {
+                log::info!("🔄 Regenerating infrared LUT with new config values");
+                current_config = new_config;
+                lut = generate_lut(&current_config);
+            }
+            last_config_check = std::time::Instant::now();
+        }
+
         if let Some(infrared_frame) = raw_rx.try_pop() {
             if infrared_frame.data.is_empty() {
                 log::debug!("Skipping empty infrared frame");
@@ -147,7 +155,7 @@ fn infrared_frame_publish(
             // Convert infrared data to RGBA using the LUT and push to RTSP
             rgba_data.clear();
             for &pt in infrared_frame.data.iter() {
-                let i = LUT[pt as usize];
+                let i = lut[pt as usize];
                 rgba_data.extend_from_slice(&[i, i, i, 255]);
             }
             rtsp.send_infra_bgra(infrared_frame.width, infrared_frame.height, &rgba_data);
@@ -158,7 +166,7 @@ fn infrared_frame_publish(
     }
 }
 
-pub fn spawn_infra_pipeline(rtsp: Arc<RtspPublisher>) {
+pub fn spawn_infra_pipeline(rtsp: Arc<RtspPublisher>, config_manager: Arc<InfraredConfigManager>) {
     let raw_ring_buffer = HeapRb::<InfraredFrameData>::new(32);
     let (mut raw_tx, mut raw_rx) = raw_ring_buffer.split();
 
@@ -172,7 +180,7 @@ pub fn spawn_infra_pipeline(rtsp: Arc<RtspPublisher>) {
 
     // Infrared frame publish thread
     std::thread::spawn(move || {
-        if let Err(e) = infrared_frame_publish(rtsp, &mut raw_rx) {
+        if let Err(e) = infrared_frame_publish(rtsp, &mut raw_rx, config_manager) {
             log::error!("Error publishing infrared frames: {e}");
         }
     });
