@@ -44,6 +44,7 @@ fn check_gst_element(name: &str) -> Result<()> {
 }
 
 /// Helper to create and configure a factory for a stream (color or infrared).
+#[allow(clippy::too_many_arguments)]
 fn create_factory(
     video_caps: &str,
     audio_caps: &str,
@@ -90,7 +91,7 @@ fn create_factory(
 
     factory.connect_media_configure(move |_, media| {
         let active = count.fetch_add(1, Ordering::SeqCst) + 1;
-        log::info!("🎥 /{src_name} session started, count = {active}");
+        log::info!("🎥 /{src_name} session started, active session count: {active}");
 
         let count_inner = count.clone();
         let video_src_unprep = video_src_clone.clone();
@@ -99,7 +100,7 @@ fn create_factory(
 
         media.connect_unprepared(move |_| {
             let active = count_inner.fetch_sub(1, Ordering::SeqCst) - 1;
-            log::info!("🎥 /{src_name_clone} session ended, count = {active}");
+            log::info!("🎥 /{src_name_clone} session ended, active session count: {active}");
             *video_src_unprep.lock() = None;
             *audio_src_unprep.lock() = None;
         });
@@ -204,10 +205,10 @@ impl RtspPublisher {
 
         // Color factory
         let color_factory = create_factory(
-            "video/x-raw,format=BGRA,width=1920,height=1080,framerate=30/1",
+            "video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1",
             "audio/x-raw,format=S16LE,layout=interleaved,rate=16000,channels=1",
-            2500000,
-            128000,
+            6_000_000, // Video bitrate 6 Mbps
+            128_000,   // Audio bitrate 128 kbps
             "colorsrc",
             "audiosrc",
             16 * 1024 * 1024,
@@ -221,8 +222,8 @@ impl RtspPublisher {
         let infra_factory = create_factory(
             "video/x-raw,format=BGRA,width=512,height=424,framerate=30/1",
             "audio/x-raw,format=S16LE,layout=interleaved,rate=16000,channels=1",
-            1500000,
-            128000,
+            1_500_000, // Video bitrate 1.5 Mbps
+            128_000,   // Audio bitrate 128 kbps
             "infrasrc",
             "infraaudiosrc",
             4 * 1024 * 1024,
@@ -235,12 +236,10 @@ impl RtspPublisher {
         // Attach server to main context - this is critical!
         let _id = server.attach(None).expect("Failed to attach RTSP server");
 
-        // Additional server configuration
+        // Listen on all interfaces
         server.set_address("0.0.0.0");
-        log::info!("RTSP server configured on {:?}", server.address());
 
-        log::info!("RTSP server ready at rtsp://127.0.0.1:{}/color", port);
-        log::info!("RTSP server ready at rtsp://127.0.0.1:{}/infrared", port);
+        log::info!("RTSP server configured on {:?}", server.address());
         log::info!("RTSP server ready at rtsp://localhost:{}/color", port);
         log::info!("RTSP server ready at rtsp://localhost:{}/infrared", port);
         log::info!("VLC: Open Media > Network Stream > Enter URL > Click Play");
@@ -262,7 +261,7 @@ impl RtspPublisher {
         }))
     }
 
-    pub fn send_color_bgra(&self, _width: u32, _height: u32, data: &[u8]) {
+    pub fn send_color_yuy2(&self, _width: u32, _height: u32, data: &[u8]) {
         if let Some(appsrc) = self.color_src.lock().as_ref() {
             let mut buffer = gst::Buffer::with_size(data.len()).expect("Failed to alloc GstBuffer");
             if let Ok(mut map) = buffer.get_mut().unwrap().map_writable() {
@@ -336,8 +335,8 @@ impl RtspPublisher {
     }
 }
 
-// Minimal custom RTSP auth module adapted from gstreamer-rs example, but validates
-// against the optional credentials provided to RtspPublisher::start.
+// Minimal custom RTSP auth module adapted from gstreamer-rs example,
+// but validates against the optional credentials provided to RtspPublisher::start.
 mod auth {
     mod imp {
         use super::super::AUTH_CREDENTIALS;

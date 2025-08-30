@@ -4,9 +4,12 @@ mod color;
 mod infrared;
 mod rtsp_publisher;
 
+use std::time::Duration;
+
 use anyhow::Context;
 use clap::Parser;
 use kinect_v2::Kinect;
+use tokio::time::sleep;
 
 use crate::audio::spawn_audio_pipeline;
 use crate::color::spawn_color_pipeline;
@@ -41,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
     // Parse CLI
     let args = Cli::parse();
 
-    start_kinect_capture(args.username, args.password, args.port)?;
+    start_kinect_capture(args.username, args.password, args.port).await?;
 
     // Wait for Ctrl-C; when received, abort the server task and await it.
     log::info!("Press Ctrl-C to exit...");
@@ -51,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn start_kinect_capture(
+pub async fn start_kinect_capture(
     rtsp_username: Option<String>,
     rtsp_password: Option<String>,
     rtsp_port: u16,
@@ -63,8 +66,8 @@ pub fn start_kinect_capture(
             if kinect.is_available()? {
                 break;
             }
-            log::info!("Waiting for Kinect device to become available...");
-            std::thread::sleep(std::time::Duration::from_millis(200));
+            log::debug!("Waiting for Kinect device to become available...");
+            sleep(Duration::from_millis(200)).await;
         }
 
         if !kinect.is_available()? {

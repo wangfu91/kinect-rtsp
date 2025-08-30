@@ -18,8 +18,8 @@ fn color_frame_capture(
     rtsp: Arc<RtspPublisher>,
     raw_tx: &mut Caching<Arc<SharedRb<Heap<ColorFrameData>>>, true, false>,
 ) -> anyhow::Result<()> {
-    let color_capture = ColorFrameCapture::new_with_format(ColorImageFormat::Bgra)
-        .context("Failed to create color capture with BGRA format")?;
+    let color_capture = ColorFrameCapture::new_with_format(ColorImageFormat::Yuy2)
+        .context("Failed to create color capture with YUY2 format")?;
 
     let mut iter: Option<ColorFrameCaptureIter> = None;
 
@@ -92,13 +92,11 @@ fn color_frame_publish(
             }
             assert_eq!(
                 color_frame.image_format,
-                ColorImageFormat::Bgra,
+                ColorImageFormat::Yuy2,
                 "Color frame format mismatch"
             );
 
-            rtsp.send_color_bgra(color_frame.width, color_frame.height, &color_frame.data);
-        } else {
-            std::thread::sleep(Duration::from_millis(2));
+            rtsp.send_color_yuy2(color_frame.width, color_frame.height, &color_frame.data);
         }
     }
 }

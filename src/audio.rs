@@ -31,7 +31,7 @@ fn audio_frame_capture(
                 // If we have an iter, drop it.
                 iter = None;
             }
-            // Sleep briefly to avoid busy waiting
+            // Sleep briefly to avoid busy looping
             std::thread::sleep(Duration::from_millis(100));
             continue;
         }
@@ -57,7 +57,7 @@ fn audio_frame_capture(
                     }
 
                     if raw_tx.try_push(data).is_err() {
-                        log::debug!("❌ Audio frame buffer full, dropping frame");
+                        log::debug!("❌ Audio frame ring buffer full, dropping frame");
                     }
                 }
                 Some(Err(e)) => {
