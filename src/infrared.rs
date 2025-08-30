@@ -98,14 +98,14 @@ fn infrared_frame_publish(
     /// The InfraredOutputValueMinimum value is used to set the lower limit, post processing, of the
     /// infrared data that we will render.
     /// Increasing or decreasing this value sets a brightness "wall" either closer or further away.
-    const INFRARED_OUTPUT_VALUE_MINIMUM: f32 = 0.25;
+    const INFRARED_OUTPUT_VALUE_MINIMUM: f32 = 0.0;
 
     /// The InfraredOutputValueMaximum value is the upper limit, post processing, of the
     /// infrared data that we will render.
     const INFRARED_OUTPUT_VALUE_MAXIMUM: f32 = 1.0;
 
     /// The value by which the infrared source data will be scaled.
-    const INFRARED_SOURCE_SCALE: f32 = 3.0;
+    const INFRARED_SOURCE_SCALE: f32 = 1.68;
 
     // Build a 64 KiB Lookup Table (LUT) once.
     // • once_cell::sync::Lazy ensures that closure runs exactly once (the first time you reference LUT), in a thread-safe way.
