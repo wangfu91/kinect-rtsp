@@ -36,8 +36,7 @@ fn check_gst_element(name: &str) -> Result<()> {
         Ok(())
     } else {
         let err_msg = format!(
-            "Missing GStreamer element '{name}'. Please ensure GStreamer and the required plugins \
-            (e.g., gst-plugins-good, gst-plugins-ugly, gst-plugins-bad) are installed correctly and accessible in your system's PATH."
+            "Missing GStreamer element '{name}'. Please ensure GStreamer and the required plugins are installed correctly and accessible in your system's PATH."
         );
         log::error!("{err_msg}");
         Err(anyhow::anyhow!(err_msg))
@@ -302,7 +301,7 @@ impl RtspPublisher {
                 .map(|&sample| (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16),
         );
 
-        let bytes: &[u8] = bytemuck::cast_slice(&*s16_data);
+        let bytes: &[u8] = bytemuck::cast_slice(&s16_data);
 
         // Allocate a GStreamer buffer and copy, the bytes in; this avoids alignment pitfalls.
         let mut buffer = gst::Buffer::with_size(bytes.len()).expect("Failed to alloc GstBuffer");
