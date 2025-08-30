@@ -173,9 +173,12 @@ impl RtspPublisher {
 
         // Optional Basic Auth (username/password). If both are provided, enable auth.
         if let (Some(user), Some(pass)) = (username, password) {
-            AUTH_CREDENTIALS
+            if AUTH_CREDENTIALS
                 .set((user.to_string(), pass.to_string()))
-                .ok();
+                .is_err()
+            {
+                log::warn!("AUTH_CREDENTIALS already set; ignoring new credentials");
+            }
             let auth = auth::Auth::default();
             server.set_auth(Some(&auth));
             log::info!("RTSP Basic Auth enabled for user '{user}'");
@@ -347,23 +350,29 @@ mod auth {
 
         impl Auth {
             fn validate_basic(&self, authorization: &str) -> Option<String> {
-                // Expect "Basic base64(user:pass)" but framework already gives the base64 payload
-                // in the example via authorization(). Here we assume it's the base64 payload.
-                // However, gst crate provides the raw auth string (base64). We'll decode and compare.
-                if let Some((u, p)) = AUTH_CREDENTIALS.get()
-                    && let Ok(decoded) =
-                        base64::engine::general_purpose::STANDARD.decode(authorization.as_bytes())
-                    && let Ok(decoded) = std::str::from_utf8(&decoded)
+                // Expect a base64 payload containing "user:pass". Decode and compare
+                // against stored credentials if present.
+                let (expected_user, expected_pass) = AUTH_CREDENTIALS.get()?;
+
+                let decoded_bytes = match base64::engine::general_purpose::STANDARD
+                    .decode(authorization.as_bytes())
                 {
-                    let mut it = decoded.splitn(2, ':');
-                    if let (Some(user), Some(pass)) = (it.next(), it.next())
-                        && user == u
-                        && pass == p
-                    {
-                        return Some(user.to_string());
-                    }
+                    Ok(b) => b,
+                    Err(_) => return None,
+                };
+
+                let decoded = match std::str::from_utf8(&decoded_bytes) {
+                    Ok(s) => s,
+                    Err(_) => return None,
+                };
+
+                let (user, pass) = decoded.split_once(':')?;
+
+                if user == expected_user && pass == expected_pass {
+                    Some(user.to_string())
+                } else {
+                    None
                 }
-                None
             }
         }
 
