@@ -15,31 +15,6 @@ This project requires the official Microsoft Kinect for Windows SDK 2.0 and runs
 - Kinect V2 sensor + Kinect Adapter
 - [Kinect for Windows SDK 2.0](https://www.microsoft.com/en-us/download/details.aspx?id=44561) installed
 
-## Build 🛠️
-Open a PowerShell prompt (pwsh) and run:
-
-```powershell
-# Build release binary
-cargo build --release
-```
-
-Notes:
-- Ensure the GStreamer MSVC runtime/bin is on your `PATH` or installed system-wide before running the built binary. 
-- If you get GStreamer-related errors at runtime, verify the installed GStreamer package matches MSVC x86_64 and that its `bin` directory is in `PATH`. 
-
-## Run (development) ▶️
-Run the server from source with optional Basic Auth and port flags:
-
-```powershell
-# Run without auth, default port is 8554
-cargo run --release
-
-# Run with Basic RTSP Auth
-cargo run --release -- --username myuser --password mypass --port 8554
-```
-
-If you prefer to run the prebuilt release ZIP provided by the maintainer, extract the ZIP and run the `kinect-rtsp.exe` included in the archive. The release ZIP will contain GStreamer dependencies so the end user doesn't need to install GStreamer separately — but the Kinect V2 SDK must still be installed. 
-
 ## CLI Options 🔧
 The binary accepts these flags:
 
