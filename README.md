@@ -2,7 +2,7 @@
 
 Kinect RTSP streams color, infrared and audio from a Kinect V2 sensor to a local RTSP server using GStreamer. Think of it as turning your Kinect into a tiny network camera!
 
-This project requires the official Microsoft Kinect for Windows SDK 2.0 and runs on Windows only. It uses the `kinect-v2` Rust bindings for device access and GStreamer to publish appsrcs as RTSP streams.
+This project requires the official Microsoft Kinect for Windows SDK 2.0 and runs on Windows only. It uses the [kinect-v2-rs](https://github.com/wangfu91/kinect-v2-rs) Rust bindings for device access and GStreamer to publish appsrcs as RTSP streams.
 
 ## Quick summary 🚀
 - Platform: Windows (Kinect V2 SDK is Windows-only) 
@@ -11,9 +11,9 @@ This project requires the official Microsoft Kinect for Windows SDK 2.0 and runs
 - Build system: Rust/Cargo
 
 ## Requirements ⚠️
-- Windows (tested on 64-bit)
+- Windows x64
 - Kinect V2 sensor + Kinect Adapter
-- Kinect for Windows SDK 2.0 installed (always required) 
+- [Kinect for Windows SDK 2.0](https://www.microsoft.com/en-us/download/details.aspx?id=44561) installed
 
 ## Build 🛠️
 Open a PowerShell prompt (pwsh) and run:
@@ -31,7 +31,7 @@ Notes:
 Run the server from source with optional Basic Auth and port flags:
 
 ```powershell
-# Run without auth, default port 8554
+# Run without auth, default port is 8554
 cargo run --release
 
 # Run with Basic RTSP Auth
@@ -75,10 +75,10 @@ Open VLC Media Player > Media > Open Network Stream, then paste one of the RTSP 
 - See `src/main.rs` for CLI flags and startup flow. 
 
 ## License 🧾
-This project follows the same license as its dependencies; 
+See `LICENSE` file for details.
 
 ## Acknowledgements 🙏
-- Microsoft Kinect for Windows SDK 2.0
-- The `kinect-v2` Rust bindings project 
-- GStreamer project for RTSP and media handling 
+- [Microsoft Kinect for Windows SDK 2.0](https://www.microsoft.com/en-us/download/details.aspx?id=44561)
+- The [kinect-v2-rs](https://github.com/wangfu91/kinect-v2-rs) Rust bindings project 
+- [GStreamer](https://gstreamer.freedesktop.org/) project for RTSP and media handling
 
