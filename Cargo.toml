@@ -15,9 +15,9 @@ bytemuck = "1.23.2"
 gstreamer = { version = "0.24.1", features = ["v1_26"] }
 gstreamer-app = { version = "0.24.0", features = ["v1_26"] }
 gstreamer-rtsp-server = { version = "0.24.1", features = ["v1_26"] }
+gstreamer-rtsp = { version = "0.24.0", features = ["v1_26"] }
 glib = "0.21.1"
 clap = { version = "4.5.46", features = ["derive"] }
-gstreamer-rtsp = { version = "0.24.0", features = ["v1_26"] }
 base64 = "0.22.1"
 parking_lot = "0.12"
 
