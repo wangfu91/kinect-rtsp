@@ -75,7 +75,7 @@ Open VLC Media Player > Media > Open Network Stream, then paste one of the RTSP 
 - See `src/main.rs` for CLI flags and startup flow. 
 
 ## License 🧾
-See `LICENSE` file for details.
+MIT, see [LICENSE](./LICENSE) file for details.
 
 ## Acknowledgements 🙏
 - [Microsoft Kinect for Windows SDK 2.0](https://www.microsoft.com/en-us/download/details.aspx?id=44561)
