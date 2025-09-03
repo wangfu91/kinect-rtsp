@@ -38,8 +38,9 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize logging
-    env_logger::init();
+    // Initialize logging. Default to `info` if RUST_LOG is not set.
+    let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
+    env_logger::Builder::from_env(env).init();
 
     // Parse CLI
     let args = Cli::parse();
