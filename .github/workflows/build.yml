@@ -30,6 +30,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+
       - name: Cache GStreamer
         id: gst-cache
         uses: actions/cache@v4
@@ -41,34 +42,40 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $ver  = "$env:GST_VERSION"
-          $candidateRoots = @(
-            'C:\gstreamer\1.0\msvc_x86_64',
-            'C:\Program Files\gstreamer\1.0\msvc_x86_64'
-          )
-          $pkgCfg = $null
-          foreach ($r in $candidateRoots) {
-            if (Test-Path (Join-Path $r 'bin/pkg-config.exe')) { $pkgCfg = Join-Path $r 'bin/pkg-config.exe'; $root = $r; break }
-          }
-          if (-not $pkgCfg) {
+          $ver  = $env:GST_VERSION
+          $root = 'C:\gstreamer\1.0\msvc_x86_64'
+          $pcDir = Join-Path $root 'lib/pkgconfig'
+          if (-not (Test-Path (Join-Path $pcDir 'gstreamer-1.0.pc'))) {
             Write-Host "GStreamer devel $ver not cached. Downloading..."
             $base = "https://gstreamer.freedesktop.org/data/pkg/windows/$ver/msvc"
-            $develMsi = "gstreamer-1.0-devel-msvc-x86_64-$ver.msi"
-            Invoke-WebRequest "$base/$develMsi" -OutFile gst-devel.msi -UseBasicParsing
-            Start-Process msiexec -ArgumentList '/i','gst-devel.msi','/qn','/norestart' -Wait
-            # After install, re-detect
-            foreach ($r in $candidateRoots) {
-              if (Test-Path (Join-Path $r 'bin/pkg-config.exe')) { $pkgCfg = Join-Path $r 'bin/pkg-config.exe'; $root = $r; break }
+            $msi  = "gstreamer-1.0-devel-msvc-x86_64-$ver.msi"
+            try {
+              Invoke-WebRequest -Uri "$base/$msi" -OutFile gst-devel.msi -UseBasicParsing -ErrorAction Stop
+            } catch {
+              throw "Failed to download $msi: $($_.Exception.Message)"
             }
-            if (-not $pkgCfg) { throw "pkg-config.exe still not found after installing GStreamer devel $ver" }
-            Write-Host "Installed GStreamer devel $ver at $root"
+            if (-not (Test-Path 'gst-devel.msi')) { throw "Download did not produce gst-devel.msi" }
+            $size = (Get-Item 'gst-devel.msi').Length
+            if ($size -lt 5MB) { throw "Downloaded gst-devel.msi is unexpectedly small: $size bytes" }
+            msiexec /i gst-devel.msi /qn /norestart
+            Write-Host "Installed GStreamer devel $ver (size $size bytes)"
           } else {
-            Write-Host "Using cached GStreamer devel $ver at $root"
+            Write-Host "Using cached GStreamer $ver"
           }
-          "GSTREAMER_ROOT=$root"        | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ASCII
-          "PKG_CONFIG_PATH=$root\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ASCII
-          "PATH=$root\bin;$env:PATH"    | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ASCII
-          & $pkgCfg --version
+          if (-not (Test-Path (Join-Path $pcDir 'gstreamer-1.0.pc'))) { throw "GStreamer pkgconfig file missing after install" }
+          "GSTREAMER_ROOT=$root"           | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ASCII
+          "PKG_CONFIG_PATH=$pcDir"         | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ASCII
+          "PATH=$root\bin;$env:PATH"       | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ASCII
+          Write-Host "pkg-config files (first 5):"; Get-ChildItem $pcDir | Select-Object -First 5 | ForEach-Object { Write-Host "  $($_.Name)" }
+          try { pkg-config --exists gstreamer-1.0; Write-Host "Verified gstreamer-1.0 via pkg-config" } catch { Write-Warning "pkg-config check failed: $($_.Exception.Message)" }
+
+      - name: Install pkg-config-lite
+        shell: pwsh
+        run: |
+          choco install pkgconfiglite -y --no-progress
+          $pkg = Get-Command pkg-config -ErrorAction SilentlyContinue
+          if (-not $pkg) { throw 'pkg-config still not on PATH after installation' }
+          Write-Host "pkg-config version: $(pkg-config --version)"
 
       - name: Build (release)
         run: cargo build --release --locked
