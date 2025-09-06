@@ -14,6 +14,7 @@ This project requires the official Microsoft Kinect for Windows SDK 2.0 and runs
 - Windows x64
 - Kinect V2 sensor + Kinect Adapter
 - [Kinect for Windows SDK 2.0](https://www.microsoft.com/en-us/download/details.aspx?id=44561) installed
+- [GStreamer runtime](https://gstreamer.freedesktop.org/download/#windows) installed
 
 ## CLI Options 🔧
 The binary accepts these flags:
@@ -43,7 +44,7 @@ Open VLC Media Player > Media > Open Network Stream, then paste one of the RTSP 
 
 ## Troubleshooting 🧰
 - "Kinect device is not available": ensure the Kinect sensor is connected and the Kinect SDK 2.0 is installed. 
-- GStreamer errors: make sure you installed the MSVC x86_64 GStreamer package and that its `bin` directory is available on `PATH`. 
+- GStreamer errors: make sure you installed the MSVC x86_64 GStreamer runtime package and that its `bin` directory is available on `PATH`. 
 
 ## Development notes 🛠️
 - The project spawns three pipelines: color, infrared and audio. The RTSP server is implemented with GStreamer appsrcs. 
