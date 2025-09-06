@@ -1,32 +1,46 @@
 ## Kinect RTSP (Kinect V2 → RTSP) 🎥📡
 
-Turn a Kinect V2 sensor into a small RTSP camera. This tool reads color, infrared and audio from a Kinect V2 and publishes them as RTSP streams using GStreamer and the `kinect-v2-rs` bindings.
+Turn a Kinect V2 sensor into a small RTSP camera. This tool reads color, infrared and audio from a Kinect V2 and publishes them as RTSP streams using GStreamer.
 
-Platform: **Windows x64 only** (requires Microsoft Kinect for Windows SDK 2.0).
+This project is part of a larger effort to build a baby-monitoring system using the Kinect V2 sensor.
+
+Platform: **Windows x64 only**.
 
 ## Table of contents
-- Quick start
-- Installation
-- Run examples
-- CLI options
-- RTSP URLs
-- Troubleshooting
-- Development notes
-- Contributing
-- License
+- [Kinect RTSP (Kinect V2 → RTSP) 🎥📡](#kinect-rtsp-kinect-v2--rtsp-)
+- [Table of contents](#table-of-contents)
+- [Prerequisites](#prerequisites)
+- [CLI options](#cli-options)
+- [Quick start](#quick-start)
+- [RTSP URLs 📡](#rtsp-urls-)
+- [Troubleshooting 🧰](#troubleshooting-)
+- [Development notes 🛠️](#development-notes-️)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgements](#acknowledgements)
 
 ---
 
+## Prerequisites
+
+- [Kinect for Windows SDK 2.0](https://www.microsoft.com/en-us/download/details.aspx?id=44561).
+- [GStreamer MSVC x86_64 runtime](https://gstreamer.freedesktop.org/download/#windows) — ensure the `bin` directory of the runtime is on `PATH`.
+
+## CLI options
+- `--username <username>`  Optional RTSP Basic Auth username.
+- `--password <password>`  Optional RTSP Basic Auth password.
+- `--port <port>`          RTSP server port (default: `8554`).
+
 ## Quick start
 
-1. Install prerequisites (see next section).
+1. Install prerequisites.
 2. Build the release binary:
 
 ```powershell
 cargo build --release
 ```
 
-3. Run the server (examples below):
+1. Run the server:
 
 ```powershell
 # start without auth on default port 8554
@@ -38,46 +52,12 @@ cargo build --release
 
 4. Open a client (VLC, ffplay, etc.) and open one of the RTSP URLs listed below.
 
-## Installation (prerequisites)
-
-- Kinect for Windows SDK 2.0 — required. Download:
-	https://www.microsoft.com/en-us/download/details.aspx?id=44561
-- GStreamer MSVC x86_64 runtime — ensure the `bin` directory of the runtime is on `PATH`.
-	https://gstreamer.freedesktop.org/download/#windows
-
-Tip (PowerShell) — add GStreamer to PATH for future sessions:
-
-```powershell
-#$GSTREAMER should point to your GStreamer MSVC x86_64 runtime install
-$GSTREAMER = 'C:\gstreamer\1.0\x86_64\bin'
-setx PATH "$env:PATH;$GSTREAMER"
-```
-
-## Run examples
-
-- Start on default port (8554):
-
-```powershell
-.\target\release\kinect-rtsp.exe
-```
-
-- Start with Basic Auth and a port:
-
-```powershell
-.\target\release\kinect-rtsp.exe --username alice --password s3cret --port 8554
-```
-
-## CLI options
-- `--username <username>`  Optional RTSP Basic Auth username.
-- `--password <password>`  Optional RTSP Basic Auth password.
-- `--port <port>`          RTSP server port (default: `8554`).
 
 ## RTSP URLs 📡
 When the server starts it will log RTSP URLs. Typical examples:
 
 - rtsp://localhost:8554/color
 - rtsp://localhost:8554/infrared
-- rtsp://localhost:8554/audio
 
 If Basic Auth is enabled the client will be prompted for credentials (or you can use an authenticated URL):
 
@@ -85,7 +65,7 @@ If Basic Auth is enabled the client will be prompted for credentials (or you can
 
 ## Troubleshooting 🧰
 
-- "Kinect device is not available":
+- Kinect device is not available:
 	- Ensure the Kinect sensor is connected and powered.
 	- Verify Kinect SDK 2.0 is installed and device appears in Windows Device Manager.
 	- Try rebooting after SDK installation.
@@ -130,6 +110,5 @@ MIT — see [LICENSE](./LICENSE).
 ## Acknowledgements
 
 - Microsoft Kinect for Windows SDK 2.0
-- `kinect-v2-rs` (Rust bindings): https://github.com/wangfu91/kinect-v2-rs
 - GStreamer project
 
