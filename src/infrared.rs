@@ -29,7 +29,7 @@ fn infrared_frame_capture(
 
     loop {
         if !rtsp.is_infra_active() {
-            log::debug!("RTSP infrared capture not active, skipping infrared capture");
+            // RTSP infrared capture not active, skipping infrared video capture.
             if iter.is_some() {
                 // If we have an iter, drop it.
                 iter = None;

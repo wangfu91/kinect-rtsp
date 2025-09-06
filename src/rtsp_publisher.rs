@@ -75,8 +75,8 @@ fn create_factory(
         caps={audio_caps} \
         ! queue leaky=downstream max-size-buffers=4 max-size-bytes=0 max-size-time=0 \
         ! audioconvert ! audioresample \
-        ! avenc_aac bitrate={audio_bitrate} \
-        ! rtpmp4apay name=pay1 pt=97 )"
+        ! opusenc bitrate={audio_bitrate} \
+        ! rtpopuspay name=pay1 pt=97 )"
     );
 
     let full_pipeline = format!("{video_pipeline}{audio_pipeline}");
@@ -165,8 +165,8 @@ impl RtspPublisher {
         // Checks for your audio branch:
         check_gst_element("audioresample")?;
         check_gst_element("audioconvert")?;
-        check_gst_element("avenc_aac")?;
-        check_gst_element("rtpmp4apay")?;
+        check_gst_element("opusenc")?;
+        check_gst_element("rtpopuspay")?;
         log::info!("✅ All required GStreamer elements are available.");
 
         let main_loop = MainLoop::new(None, false);

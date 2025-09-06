@@ -28,7 +28,7 @@ fn color_frame_capture(
 
     loop {
         if !rtsp.is_color_active() {
-            log::debug!("RTSP color capture not active, skipping color capture");
+            // RTSP color capture not active, skipping color video capture.
             if iter.is_some() {
                 // If we have an iter, drop it.
                 iter = None;

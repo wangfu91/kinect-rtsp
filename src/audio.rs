@@ -26,7 +26,7 @@ fn audio_frame_capture(
 
     loop {
         if !rtsp.is_capture_active() {
-            log::debug!("RTSP capture not active, skipping audio capture");
+            // RTSP capture not active, skipping audio capture.
             if iter.is_some() {
                 // If we have an iter, drop it.
                 iter = None;

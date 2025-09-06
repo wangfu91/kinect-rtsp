@@ -68,7 +68,7 @@ pub async fn start_kinect_capture(
                 break;
             }
             log::debug!("Waiting for Kinect device to become available...");
-            sleep(Duration::from_millis(200)).await;
+            sleep(Duration::from_millis(500)).await;
         }
 
         if !kinect.is_available()? {
