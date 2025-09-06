@@ -9,6 +9,8 @@ jobs:
   build-and-release:
     name: Build & Publish (Windows)
     runs-on: windows-latest
+    env:
+      GST_VERSION: 1.26.5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,6 +28,33 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+      - name: Cache GStreamer
+        id: gst-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\gstreamer\1.0
+          key: ${{ runner.os }}-gstreamer-${{ env.GST_VERSION }}
+
+      - name: Install / Setup GStreamer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ver  = "$env:GST_VERSION"
+            $root = 'C:\gstreamer\1.0\msvc_x86_64'
+          if (-not (Test-Path "$root\lib\pkgconfig\gstreamer-1.0.pc")) {
+            Write-Host "GStreamer $ver not cached. Downloading runtime + devel (first run only)..."
+            $base = "https://gstreamer.freedesktop.org/data/pkg/windows/$ver/msvc"
+            Invoke-WebRequest "$base/gstreamer-1.0-msvc-x86_64-$ver.msi" -OutFile gst.msi -UseBasicParsing
+            Invoke-WebRequest "$base/gstreamer-1.0-devel-msvc-x86_64-$ver.msi" -OutFile gst-devel.msi -UseBasicParsing
+            Start-Process msiexec -ArgumentList '/i','gst.msi','/qn','/norestart' -Wait
+            Start-Process msiexec -ArgumentList '/i','gst-devel.msi','/qn','/norestart' -Wait
+            Write-Host "Installed GStreamer $ver"
+          } else {
+            Write-Host "Using cached GStreamer $ver"
+          }
+          echo "GSTREAMER_ROOT=$root" >> $env:GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$root\lib\pkgconfig" >> $env:GITHUB_ENV
+          echo "PATH=$root\bin;$env:PATH" >> $env:GITHUB_ENV
 
       - name: Build (release)
         run: cargo build --release --locked
