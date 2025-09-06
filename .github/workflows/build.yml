@@ -52,7 +52,8 @@ jobs:
             try {
               Invoke-WebRequest -Uri "$base/$msi" -OutFile gst-devel.msi -UseBasicParsing -ErrorAction Stop
             } catch {
-              throw "Failed to download $msi: $($_.Exception.Message)"
+              $err = $_.Exception.Message
+              throw "Failed to download ${msi}: $err"
             }
             if (-not (Test-Path 'gst-devel.msi')) { throw "Download did not produce gst-devel.msi" }
             $size = (Get-Item 'gst-devel.msi').Length
