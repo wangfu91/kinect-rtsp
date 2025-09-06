@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+\.[0-9]+\.[0-9]+'
+
+jobs:
+  build-and-release:
+    name: Build & Publish (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build (release)
+        run: cargo build --release --locked
+
+      - name: Prepare package
+        id: prep
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GITHUB_REF -replace 'refs/tags/'
+          $outDir = "target/release"
+          if (!(Test-Path "$outDir/kinect-rtsp.exe")) { throw 'Missing kinect-rtsp.exe after build' }
+          if (Test-Path 'run.ps1' -and !(Test-Path "$outDir/run.ps1")) { Copy-Item run.ps1 $outDir }
+          $zipName = "kinect-rtsp-$tag-windows-x64.zip"
+          Compress-Archive -Path "$outDir/kinect-rtsp.exe", "$outDir/run.ps1" -DestinationPath $zipName -Force
+          Write-Host "Created $zipName"
+          $hash = (Get-FileHash -Algorithm SHA256 $zipName).Hash
+          "$hash  $zipName" | Out-File -FilePath "$zipName.sha256" -Encoding ASCII
+          Write-Host "SHA256: $hash"
+          "zip_name=$zipName" >> $env:GITHUB_OUTPUT
+
+      - name: Upload artifacts (zip + checksum)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            ${{ steps.prep.outputs.zip_name }}
+            ${{ steps.prep.outputs.zip_name }}.sha256
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.prep.outputs.zip_name }}
+            ${{ steps.prep.outputs.zip_name }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
