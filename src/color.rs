@@ -34,7 +34,7 @@ fn color_frame_capture(
                 iter = None;
             }
             // Sleep briefly to avoid busy waiting
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(Duration::from_millis(300));
             continue;
         }
 
@@ -97,13 +97,16 @@ fn color_frame_publish(
             );
 
             rtsp.send_color_yuy2(color_frame.width, color_frame.height, &color_frame.data);
+        } else {
+            // No new frame yet, sleep briefly to avoid busy waiting
+            std::thread::sleep(Duration::from_millis(30));
         }
     }
 }
 
 pub fn spawn_color_pipeline(rtsp: Arc<RtspPublisher>) {
-    // Limit buffering to reduce peak memory: 8 x 1920x1080 BGRA ~ 66MB
-    let raw_ring_buffer = HeapRb::<ColorFrameData>::new(8);
+    // Limit buffering to reduce peak memory: 16 x 1920x1080 YUY2 ~ 64MB
+    let raw_ring_buffer = HeapRb::<ColorFrameData>::new(16);
     let (mut raw_tx, mut raw_rx) = raw_ring_buffer.split();
 
     let rtsp_clone = rtsp.clone();

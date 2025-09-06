@@ -32,7 +32,7 @@ fn audio_frame_capture(
                 iter = None;
             }
             // Sleep briefly to avoid busy looping
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(Duration::from_millis(300));
             continue;
         }
 
@@ -108,7 +108,7 @@ fn audio_frame_publish(
             }
         } else {
             // No new frame yet, sleep briefly to avoid busy waiting
-            std::thread::sleep(Duration::from_millis(5));
+            std::thread::sleep(Duration::from_millis(30));
         }
     }
 }

@@ -36,7 +36,7 @@ fn infrared_frame_capture(
             }
 
             // Sleep briefly to avoid busy waiting
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(Duration::from_millis(300));
             continue;
         }
 
@@ -153,7 +153,7 @@ fn infrared_frame_publish(
             rtsp.send_infra_bgra(infrared_frame.width, infrared_frame.height, &rgba_data);
         } else {
             // No frame is available, sleep briefly to avoid busy waiting
-            std::thread::sleep(Duration::from_millis(5));
+            std::thread::sleep(Duration::from_millis(30));
         }
     }
 }
