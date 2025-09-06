@@ -34,29 +34,30 @@ jobs:
         id: gst-cache
         uses: actions/cache@v4
         with:
-          path: C:\gstreamer\1.0
-          key: ${{ runner.os }}-gstreamer-${{ env.GST_VERSION }}
+          path: C:\Program Files\gstreamer\1.0
+          key: ${{ runner.os }}-gstreamer-devel-${{ env.GST_VERSION }}
 
-      - name: Install / Setup GStreamer
+      - name: Install / Setup GStreamer (devel only)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $ver  = "$env:GST_VERSION"
-          $root = 'C:\gstreamer\1.0\msvc_x86_64'
-          if (-not (Test-Path "$root\lib\pkgconfig\gstreamer-1.0.pc")) {
-            Write-Host "GStreamer $ver not cached. Downloading runtime + devel (first run only)..."
+          $root = 'C:\Program Files\gstreamer\1.0\msvc_x86_64'
+          $pkgCfg = Join-Path $root 'bin/pkg-config.exe'
+          if (-not (Test-Path $pkgCfg)) {
+            Write-Host "GStreamer devel $ver not cached. Downloading devel package..."
             $base = "https://gstreamer.freedesktop.org/data/pkg/windows/$ver/msvc"
-            Invoke-WebRequest "$base/gstreamer-1.0-msvc-x86_64-$ver.msi" -OutFile gst.msi -UseBasicParsing
-            Invoke-WebRequest "$base/gstreamer-1.0-devel-msvc-x86_64-$ver.msi" -OutFile gst-devel.msi -UseBasicParsing
-            Start-Process msiexec -ArgumentList '/i','gst.msi','/qn','/norestart' -Wait
+            $develMsi = "gstreamer-1.0-devel-msvc-x86_64-$ver.msi"
+            Invoke-WebRequest "$base/$develMsi" -OutFile gst-devel.msi -UseBasicParsing
             Start-Process msiexec -ArgumentList '/i','gst-devel.msi','/qn','/norestart' -Wait
-            Write-Host "Installed GStreamer $ver"
+            Write-Host "Installed GStreamer devel $ver"
           } else {
-            Write-Host "Using cached GStreamer $ver"
+            Write-Host "Using cached GStreamer devel $ver"
           }
-          echo "GSTREAMER_ROOT=$root" >> $env:GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$root\lib\pkgconfig" >> $env:GITHUB_ENV
-          echo "PATH=$root\bin;$env:PATH" >> $env:GITHUB_ENV
+          Add-Content -Path $env:GITHUB_ENV -Value "GSTREAMER_ROOT=$root"
+          Add-Content -Path $env:GITHUB_ENV -Value "PKG_CONFIG_PATH=$root\lib\pkgconfig"
+          Add-Content -Path $env:GITHUB_ENV -Value ("PATH=$($root)\bin;" + $env:PATH)
+          & "$pkgCfg" --version
 
       - name: Build (release)
         run: cargo build --release --locked
