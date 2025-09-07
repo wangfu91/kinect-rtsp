@@ -40,7 +40,7 @@ Platform: **Windows x64 only**.
 cargo build --release
 ```
 
-1. Run the server:
+3. Run the server:
 
 ```powershell
 # start without auth on default port 8554
