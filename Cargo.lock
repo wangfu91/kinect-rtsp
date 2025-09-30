@@ -78,9 +78,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.99"
+version = "1.0.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
+checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
 name = "atomic_refcell"
@@ -191,9 +191,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.47"
+version = "4.5.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7eac00902d9d136acd712710d71823fb8ac8004ca445a89e73a41d45aa712931"
+checksum = "e2134bb3ea021b78629caa971416385309e0131b351b25e01dc16fb54e1b5fae"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -201,9 +201,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.47"
+version = "4.5.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ad9bbf750e73b5884fb8a211a9424a1906c1e156724260fdae972f31d70e1d6"
+checksum = "c2ba64afa3c0a6df7fa517765e31314e983f51dda798ffba27b988194fb65dc9"
 dependencies = [
  "anstream",
  "anstyle",
@@ -383,9 +383,9 @@ dependencies = [
 
 [[package]]
 name = "glib"
-version = "0.21.1"
+version = "0.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60bdc26493257b5794ba9301f7cbaf7ab0d69a570bfbefa4d7d360e781cb5205"
+checksum = "e1f2cbc4577536c849335878552f42086bfd25a8dcd6f54a18655cf818b20c8f"
 dependencies = [
  "bitflags",
  "futures-channel",
@@ -444,9 +444,9 @@ dependencies = [
 
 [[package]]
 name = "gstreamer"
-version = "0.24.1"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32f5db514ad5ccf70ad35485058aa8b894bb81cfcf76bb994af135d9789427c6"
+checksum = "3e7ba7a2584e31927b7fec6a32737b57dc991b55253c9bb7c2c8eddb5a4cb345"
 dependencies = [
  "cfg-if",
  "futures-channel",
@@ -461,7 +461,7 @@ dependencies = [
  "num-integer",
  "num-rational",
  "option-operations",
- "paste",
+ "pastey",
  "pin-project-lite",
  "smallvec",
  "thiserror",
@@ -469,9 +469,9 @@ dependencies = [
 
 [[package]]
 name = "gstreamer-app"
-version = "0.24.0"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fad8ae64a7af6d1aa04e96db085a0cbd64a6b838d85c115c99fa053ab8902d98"
+checksum = "0af5d403738faf03494dfd502d223444b4b44feb997ba28ab3f118ee6d40a0b2"
 dependencies = [
  "futures-core",
  "futures-sink",
@@ -549,9 +549,9 @@ dependencies = [
 
 [[package]]
 name = "gstreamer-rtsp"
-version = "0.24.0"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6534b1812451f905032cb7110fc7d60fa1fd6ec846e68a233ef4ac16762c649c"
+checksum = "e286381af1e41898fc1a515c5ab62306d1db7e216f20b052c8999f05f0ee26f0"
 dependencies = [
  "glib",
  "gstreamer",
@@ -562,9 +562,9 @@ dependencies = [
 
 [[package]]
 name = "gstreamer-rtsp-server"
-version = "0.24.1"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fe8d1314ee47a1c9befa38a6ee631c7afaf94481e7e64b566fd35b15814391c"
+checksum = "50e50796c47fd60572cf7c2382336fa5d3a64c5d74b42fd63e83aba5c5ef62a8"
 dependencies = [
  "gio",
  "glib",
@@ -907,11 +907,11 @@ checksum = "a4895175b425cb1f87721b59f0f286c2092bd4af812243672510e1ac53e2e0ad"
 
 [[package]]
 name = "option-operations"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c26d27bb1aeab65138e4bf7666045169d1717febcc9ff870166be8348b223d0"
+checksum = "b31ce827892359f23d3cd1cc4c75a6c241772bbd2db17a92dcf27cbefdf52689"
 dependencies = [
- "paste",
+ "pastey",
 ]
 
 [[package]]
@@ -938,10 +938,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "paste"
-version = "1.0.15"
+name = "pastey"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+checksum = "35fb2e5f958ec131621fdd531e9fc186ed768cbe395337403ae56c17a74c68ec"
 
 [[package]]
 name = "pin-project-lite"
