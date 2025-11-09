@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
+use bytemuck::try_cast_slice;
 // no async ring buffers needed for RTSP publishing path
 use kinect_v2::audio_capture::{AudioFrameCapture, AudioFrameCaptureIter, AudioFrameData};
 use ringbuf::{
@@ -17,8 +18,7 @@ fn audio_frame_capture(
     rtsp: Arc<RtspPublisher>,
     raw_tx: &mut Caching<Arc<SharedRb<Heap<AudioFrameData>>>, true, false>,
 ) -> anyhow::Result<()> {
-    let audio_capture = AudioFrameCapture::new().context("Failed to create audio capture")?;
-
+    let mut audio_capture: Option<AudioFrameCapture> = None;
     let mut iter: Option<AudioFrameCaptureIter> = None;
 
     let mut frame_count = 0;
@@ -26,23 +26,35 @@ fn audio_frame_capture(
 
     loop {
         if !rtsp.is_capture_active() {
-            // RTSP capture not active, skipping audio capture.
+            // RTSP capture not active, release Kinect resources.
             if iter.is_some() {
-                // If we have an iter, drop it.
                 iter = None;
+                log::info!("Kinect audio capture paused (no active subscribers)");
             }
-            // Sleep briefly to avoid busy looping
+            if audio_capture.take().is_some() {
+                log::debug!("Kinect audio capture resources released");
+            }
             std::thread::sleep(Duration::from_millis(30));
             continue;
         }
 
         if iter.is_none() {
-            log::info!("Kinect audio capture starting...");
-            iter = Some(
-                audio_capture
-                    .iter()
-                    .context("Failed to create audio capture iterator")?,
-            );
+            if audio_capture.is_none() {
+                log::info!("Kinect audio capture starting...");
+                audio_capture =
+                    Some(AudioFrameCapture::new().context("Failed to create audio capture")?);
+            }
+
+            if let Some(capture) = audio_capture.as_ref() {
+                iter = Some(
+                    capture
+                        .iter()
+                        .context("Failed to create audio capture iterator")?,
+                );
+            } else {
+                std::thread::sleep(Duration::from_millis(30));
+                continue;
+            }
         }
 
         if let Some(iter) = &mut iter {
@@ -93,14 +105,19 @@ fn audio_frame_publish(
                 continue;
             }
 
-            // Decode raw bytes into f32 samples
-            let float_samples: Vec<f32> = audio_frame
-                .data
-                .chunks_exact(4)
-                .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
-                .collect();
-
-            audio_frame_buffer.append_samples(float_samples);
+            // Decode raw bytes into f32 samples without per-frame allocation
+            match try_cast_slice::<u8, f32>(&audio_frame.data) {
+                Ok(samples) => {
+                    audio_frame_buffer.append_samples(samples.iter().copied());
+                }
+                Err(err) => {
+                    log::warn!(
+                        "Unexpected audio frame layout ({} bytes): {err}",
+                        audio_frame.data.len()
+                    );
+                    continue;
+                }
+            }
 
             // Process each full 320‐sample chunk by sending it to RTSP (it will be converted to S16 in publisher)
             while let Some(input_chunk) = audio_frame_buffer.pop_frame(FRAME_SIZE) {

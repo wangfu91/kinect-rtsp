@@ -19,9 +19,7 @@ fn infrared_frame_capture(
     rtsp: Arc<RtspPublisher>,
     raw_tx: &mut Caching<Arc<SharedRb<Heap<InfraredFrameData>>>, true, false>,
 ) -> anyhow::Result<()> {
-    let infrared_capture =
-        InfraredFrameCapture::new().context("Failed to create infrared capture")?;
-
+    let mut infrared_capture: Option<InfraredFrameCapture> = None;
     let mut iter: Option<InfraredFrameCaptureIter> = None;
 
     let mut frame_count = 0;
@@ -29,24 +27,36 @@ fn infrared_frame_capture(
 
     loop {
         if !rtsp.is_infra_active() {
-            // RTSP infrared capture not active, skipping infrared video capture.
+            // RTSP infrared capture not active, release Kinect resources.
             if iter.is_some() {
-                // If we have an iter, drop it.
                 iter = None;
+                log::info!("Kinect infrared capture paused (no active subscribers)");
+            }
+            if infrared_capture.take().is_some() {
+                log::debug!("Kinect infrared capture resources released");
             }
 
-            // Sleep briefly to avoid busy waiting
             std::thread::sleep(Duration::from_millis(30));
             continue;
         }
 
         if iter.is_none() {
-            log::info!("Kinect infrared capture starting...");
-            iter = Some(
-                infrared_capture
-                    .iter()
-                    .context("Failed to create infrared capture iterator")?,
-            );
+            if infrared_capture.is_none() {
+                log::info!("Kinect infrared capture starting...");
+                infrared_capture =
+                    Some(InfraredFrameCapture::new().context("Failed to create infrared capture")?);
+            }
+
+            if let Some(capture) = infrared_capture.as_ref() {
+                iter = Some(
+                    capture
+                        .iter()
+                        .context("Failed to create infrared capture iterator")?,
+                );
+            } else {
+                std::thread::sleep(Duration::from_millis(30));
+                continue;
+            }
         }
 
         if let Some(iter) = &mut iter {
@@ -126,9 +136,8 @@ fn infrared_frame_publish(
     });
 
     // pre‐allocate a single RGBA buffer. Kinect is always the same resolution,
-    // so after the first frame we never re‐reserve.
+    // so after the first frame we never re‐resize beyond the fixed frame size.
     let mut rgba_data = Vec::new();
-    let mut first_frame = true;
 
     loop {
         if let Some(infrared_frame) = raw_rx.try_pop() {
@@ -137,18 +146,22 @@ fn infrared_frame_publish(
                 continue; // Skip empty frames
             }
 
-            // on first real frame, reserve full capacity
-            if first_frame {
-                let cap = (infrared_frame.width * infrared_frame.height * 4) as usize;
-                rgba_data.reserve_exact(cap);
-                first_frame = false;
+            let pixel_count = (infrared_frame.width * infrared_frame.height) as usize;
+            let bytes_len = pixel_count * 4;
+            if rgba_data.len() != bytes_len {
+                rgba_data.resize(bytes_len, 0);
             }
 
             // Convert infrared data to RGBA using the LUT and push to RTSP
-            rgba_data.clear();
-            for &pt in infrared_frame.data.iter() {
+            for (chunk, &pt) in rgba_data
+                .chunks_exact_mut(4)
+                .zip(infrared_frame.data.iter())
+            {
                 let i = LUT[pt as usize];
-                rgba_data.extend_from_slice(&[i, i, i, 255]);
+                chunk[0] = i;
+                chunk[1] = i;
+                chunk[2] = i;
+                chunk[3] = 255;
             }
             rtsp.send_infra_bgra(infrared_frame.width, infrared_frame.height, &rgba_data);
         } else {

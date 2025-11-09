@@ -18,9 +18,7 @@ fn color_frame_capture(
     rtsp: Arc<RtspPublisher>,
     raw_tx: &mut Caching<Arc<SharedRb<Heap<ColorFrameData>>>, true, false>,
 ) -> anyhow::Result<()> {
-    let color_capture = ColorFrameCapture::new_with_format(ColorImageFormat::Yuy2)
-        .context("Failed to create color capture with YUY2 format")?;
-
+    let mut color_capture: Option<ColorFrameCapture> = None;
     let mut iter: Option<ColorFrameCaptureIter> = None;
 
     let mut frame_count = 0;
@@ -28,23 +26,37 @@ fn color_frame_capture(
 
     loop {
         if !rtsp.is_color_active() {
-            // RTSP color capture not active, skipping color video capture.
+            // RTSP color capture not active, release Kinect resources.
             if iter.is_some() {
-                // If we have an iter, drop it.
                 iter = None;
+                log::info!("Kinect color capture paused (no active subscribers)");
             }
-            // Sleep briefly to avoid busy waiting
+            if color_capture.take().is_some() {
+                log::debug!("Kinect color capture resources released");
+            }
             std::thread::sleep(Duration::from_millis(30));
             continue;
         }
 
         if iter.is_none() {
-            log::info!("Kinect color capture starting...");
-            iter = Some(
-                color_capture
-                    .iter()
-                    .context("Failed to create color capture iterator")?,
-            );
+            if color_capture.is_none() {
+                log::info!("Kinect color capture starting...");
+                color_capture = Some(
+                    ColorFrameCapture::new_with_format(ColorImageFormat::Yuy2)
+                        .context("Failed to create color capture with YUY2 format")?,
+                );
+            }
+
+            if let Some(capture) = color_capture.as_ref() {
+                iter = Some(
+                    capture
+                        .iter()
+                        .context("Failed to create color capture iterator")?,
+                );
+            } else {
+                std::thread::sleep(Duration::from_millis(30));
+                continue;
+            }
         }
 
         if let Some(iter) = &mut iter {
